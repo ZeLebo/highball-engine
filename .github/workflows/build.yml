@@ -1,19 +1,10 @@
-# Builds the engine from the pinned CrossOver sources. Manual dispatch only until the first
-# build is green and boots a bottle through Highball; nothing in the app points here yet.
-name: build-engine
+# Builds the combined test engine from this branch and uploads only a CI artifact.
+name: build-test-engine
 on:
-  workflow_dispatch:
-    inputs:
-      publish_release:
-        description: "Publish the tarball as a GitHub release (tag engine-<wine version>-<date>)"
-        type: boolean
-        default: false
-      ref_note:
-        description: "why this build (free text, goes in the artifact name)"
-        required: false
-        default: "manual"
+  push:
+    branches: [test-native-macos-engine]
 permissions:
-  contents: write   # the optional release step creates a release and uploads the tarball
+  contents: read
 jobs:
   build:
     # Intel runner on purpose: the Unix side of this tree is x86_64 only (the Mac driver's
@@ -141,7 +132,7 @@ jobs:
           echo "winegstreamer.so links: $(otool -L out/engine/lib/wine/x86_64-unix/winegstreamer.so | awk 'NR > 1 && $1 !~ /^\/(usr\/lib|System)\// {printf "%s ", $1}')"
           echo "engine size: ${before} MB -> $(du -sm out/engine | cut -f1) MB"
           out/engine/bin/wine --version
-          name="engine-$(out/engine/bin/wine --version | tr ' ()' '-' | tr -s '-' | sed 's/-$//')-$(date -u +%Y%m%dT%H%M%SZ)-${{ github.event.inputs.ref_note }}"
+          name="engine-$(out/engine/bin/wine --version | tr ' ()' '-' | tr -s '-' | sed 's/-$//')-$(date -u +%Y%m%dT%H%M%SZ)-native-macos-pr36-pr37"
           tar -C out -czf "${name}.tar.gz" .
           shasum -a 256 "${name}.tar.gz" | tee "${name}.tar.gz.sha256"
           ls -la "${name}.tar.gz"
@@ -152,12 +143,3 @@ jobs:
             engine-*.tar.gz
             engine-*.tar.gz.sha256
           retention-days: 14
-      - name: publish release
-        if: ${{ github.event.inputs.publish_release == 'true' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          f=$(ls engine-*.tar.gz | head -1)
-          tag="${f%.tar.gz}"
-          gh release create "$tag" "$f" "$f.sha256" --title "$tag" --notes "Wine from the pinned CrossOver source (inputs.json) with the patch series in patches/. Built by run ${{ github.run_id }}. Checksum in the .sha256 file."
